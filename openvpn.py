@@ -10,7 +10,7 @@ from telegram.ext import CommandHandler, Updater
 
 
 load_dotenv()
-updater = Updater(token=os.getenv('TELEGRAM_TOKEN_EXCHANGE', 'token'))
+updater = Updater(token=os.getenv('TELEGRAM_TOKEN', 'token'))
 
 
 def create_key():
