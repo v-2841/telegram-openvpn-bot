@@ -5,15 +5,15 @@ import subprocess
 from pathlib import Path
 
 from dotenv import load_dotenv
-from telegram import ReplyKeyboardMarkup
-from telegram.ext import CommandHandler, Updater
+from telegram import LabeledPrice, ReplyKeyboardMarkup, Update
+from telegram.ext import (Application, CommandHandler, MessageHandler,
+                          PreCheckoutQueryHandler, filters)
 
 
 load_dotenv()
-updater = Updater(token=os.getenv('TELEGRAM_TOKEN', 'token'))
 
 
-def create_key():
+async def create_key():
     TEMP_NAME_LENGHT = 10
     symbols = string.ascii_letters + string.digits
     temp_name = ''.join(
@@ -33,23 +33,46 @@ def create_key():
     return temp_name
 
 
-def send_key(update, context):
+async def offer_key(update, context):
+    chat_id = update.message.chat_id
+    title = "VPN"
+    description = "Ключ OpenVPN на 1 день"
+    payload = "OpenVPN-Payload"
+    currency = "USD"
+    price = 1
+    prices = [LabeledPrice("Ключ OpenVPN на 1 день", price * 100)]
+    await context.bot.send_invoice(
+        chat_id, title, description, payload,
+        os.getenv('PAYMENT_PROVIDER_TOKEN', 'token'), currency, prices,
+    )
+
+
+async def precheckout_callback(update, context):
+    query = update.pre_checkout_query
+    if query.invoice_payload != "OpenVPN-Payload":
+        await query.answer(ok=False, error_message="Что-то пошло не так...")
+    else:
+        await query.answer(ok=True)
+
+
+async def send_key(update, context):
+    await update.message.reply_text("Платеж совершен!")
     chat = update.effective_chat
-    temp_name = create_key()
+    temp_name = await create_key()
     with open(Path().home() / f'{temp_name}.ovpn', 'rb') as document:
-        context.bot.send_document(
+        await context.bot.send_document(
             chat_id=chat.id,
             document=document,
         )
     os.remove(Path().home() / f'{temp_name}.ovpn')
 
 
-def start(update, context):
+async def start(update, context):
     chat = update.effective_chat
     buttons = ReplyKeyboardMarkup([
                 ['/get_key']
             ], resize_keyboard=True)
-    context.bot.send_message(
+    await context.bot.send_message(
         chat_id=chat.id,
         text=('Привет!'),
         reply_markup=buttons,
@@ -57,7 +80,12 @@ def start(update, context):
 
 
 if __name__ == '__main__':
-    updater.dispatcher.add_handler(CommandHandler('start', start))
-    updater.dispatcher.add_handler(CommandHandler('get_key', send_key))
-    updater.start_polling()
-    updater.idle()
+    application = Application.builder().token(
+        os.getenv('TELEGRAM_TOKEN', 'token')).build()
+    application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler("get_key", offer_key))
+    application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
+    application.add_handler(
+        MessageHandler(filters.SUCCESSFUL_PAYMENT, send_key)
+    )
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
