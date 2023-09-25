@@ -53,14 +53,17 @@ async def send_key(update, context):
             chat_id=chat.id,
             photo=photo,
         )
-    temp_name = await create_key()
-    logging.INFO('Ключ создан')
-    with open(Path().home() / f'{temp_name}.ovpn', 'rb') as document:
-        await context.bot.send_document(
-            chat_id=chat.id,
-            document=document,
-        )
-    os.remove(Path().home() / f'{temp_name}.ovpn')
+    try:
+        temp_name = await create_key()
+        logger.info(f'Ключ создан для чата {chat.id} - {temp_name}.ovpn')
+        with open(Path().home() / f'{temp_name}.ovpn', 'rb') as document:
+            await context.bot.send_document(
+                chat_id=chat.id,
+                document=document,
+            )
+        os.remove(Path().home() / f'{temp_name}.ovpn')
+    except Exception as error:
+        logger.error(error, exc_info=True)
 
 
 async def start(update, context):
