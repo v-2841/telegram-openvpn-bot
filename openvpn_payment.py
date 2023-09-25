@@ -1,29 +1,16 @@
-import logging
 import os
 import random
 import string
 import subprocess
 from pathlib import Path
-from logging.handlers import RotatingFileHandler
 
 from dotenv import load_dotenv
-from telegram import ReplyKeyboardMarkup, Update
+from telegram import LabeledPrice, ReplyKeyboardMarkup, Update
 from telegram.ext import (Application, CommandHandler, MessageHandler,
-                          filters)
+                          PreCheckoutQueryHandler, filters)
 
 
 load_dotenv()
-logging.basicConfig(
-    level=logging.INFO,
-    filename='main.log',
-    filemode='a',
-    format='%(asctime)s, %(name)s, %(levelname)s, %(funcName)s, %(message)s',
-)
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-handler = RotatingFileHandler('main.log', maxBytes=50000000, backupCount=5)
-logger.addHandler(handler)
 
 
 async def create_key():
@@ -46,15 +33,32 @@ async def create_key():
     return temp_name
 
 
+async def offer_key(update, context):
+    chat_id = update.message.chat_id
+    title = "VPN"
+    description = "Ключ OpenVPN на 1 день"
+    payload = "OpenVPN-Payload"
+    currency = "USD"
+    price = 1
+    prices = [LabeledPrice("Ключ OpenVPN на 1 день", price * 100)]
+    await context.bot.send_invoice(
+        chat_id, title, description, payload,
+        os.getenv('PAYMENT_PROVIDER_TOKEN', 'token'), currency, prices,
+    )
+
+
+async def precheckout_callback(update, context):
+    query = update.pre_checkout_query
+    if query.invoice_payload != "OpenVPN-Payload":
+        await query.answer(ok=False, error_message="Что-то пошло не так...")
+    else:
+        await query.answer(ok=True)
+
+
 async def send_key(update, context):
+    await update.message.reply_text("Платеж совершен!")
     chat = update.effective_chat
-    with open('make_key.jpg', 'rb') as photo:
-        await context.bot.send_photo(
-            chat_id=chat.id,
-            photo=photo,
-        )
     temp_name = await create_key()
-    logging.INFO('Ключ создан')
     with open(Path().home() / f'{temp_name}.ovpn', 'rb') as document:
         await context.bot.send_document(
             chat_id=chat.id,
@@ -66,7 +70,7 @@ async def send_key(update, context):
 async def start(update, context):
     chat = update.effective_chat
     buttons = ReplyKeyboardMarkup([
-                ['Получить ключ']
+                ['Купить ключ']
             ], resize_keyboard=True)
     await context.bot.send_message(
         chat_id=chat.id,
@@ -80,5 +84,9 @@ if __name__ == '__main__':
         os.getenv('TELEGRAM_TOKEN', 'token')).build()
     application.add_handler(CommandHandler('start', start))
     application.add_handler(MessageHandler(
-        filters.Regex('^Получить ключ$'), send_key))
+        filters.Regex('^Купить ключ$'), offer_key))
+    application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
+    application.add_handler(
+        MessageHandler(filters.SUCCESSFUL_PAYMENT, send_key)
+    )
     application.run_polling(allowed_updates=Update.ALL_TYPES)
