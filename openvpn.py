@@ -13,17 +13,15 @@ from telegram.ext import (Application, CommandHandler, MessageHandler,
 
 
 load_dotenv()
+Path('logs/').mkdir(exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
-    filename='main.log',
-    filemode='a',
     format='%(asctime)s, %(name)s, %(levelname)s, %(funcName)s, %(message)s',
+    handlers=[RotatingFileHandler(
+        'logs/main.log', maxBytes=100000, backupCount=10)],
 )
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-handler = RotatingFileHandler('main.log', maxBytes=50000000, backupCount=5)
-logger.addHandler(handler)
 
 
 async def create_key():
@@ -68,6 +66,7 @@ async def send_key(update, context):
 
 async def start(update, context):
     chat = update.effective_chat
+    logger.info(f'Старт чата {chat.id}')
     buttons = ReplyKeyboardMarkup([
                 ['Получить ключ']
             ], resize_keyboard=True)

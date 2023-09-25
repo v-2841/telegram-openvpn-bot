@@ -1,8 +1,10 @@
+import logging
 import os
 import random
 import string
 import subprocess
 from pathlib import Path
+from logging.handlers import RotatingFileHandler
 
 from dotenv import load_dotenv
 from telegram import LabeledPrice, ReplyKeyboardMarkup, Update
@@ -11,6 +13,15 @@ from telegram.ext import (Application, CommandHandler, MessageHandler,
 
 
 load_dotenv()
+Path('logs/').mkdir(exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s, %(name)s, %(levelname)s, %(funcName)s, %(message)s',
+    handlers=[RotatingFileHandler(
+        'logs/main_payment.log', maxBytes=100000, backupCount=10)],
+)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logger = logging.getLogger(__name__)
 
 
 async def create_key():
@@ -58,13 +69,17 @@ async def precheckout_callback(update, context):
 async def send_key(update, context):
     await update.message.reply_text("Платеж совершен!")
     chat = update.effective_chat
-    temp_name = await create_key()
-    with open(Path().home() / f'{temp_name}.ovpn', 'rb') as document:
-        await context.bot.send_document(
-            chat_id=chat.id,
-            document=document,
-        )
-    os.remove(Path().home() / f'{temp_name}.ovpn')
+    try:
+        temp_name = await create_key()
+        logger.info(f'Ключ создан для чата {chat.id} - {temp_name}.ovpn')
+        with open(Path().home() / f'{temp_name}.ovpn', 'rb') as document:
+            await context.bot.send_document(
+                chat_id=chat.id,
+                document=document,
+            )
+        os.remove(Path().home() / f'{temp_name}.ovpn')
+    except Exception as error:
+        logger.error(error, exc_info=True)
 
 
 async def start(update, context):
