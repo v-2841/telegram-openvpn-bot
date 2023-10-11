@@ -1,8 +1,8 @@
+import asyncio
 import logging
 import os
 import random
 import string
-import subprocess
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
 
@@ -29,18 +29,17 @@ async def create_key():
     symbols = string.ascii_letters + string.digits
     temp_name = ''.join(
         random.choice(symbols) for _ in range(TEMP_NAME_LENGHT))
-    process = subprocess.Popen(
-        ['bash', 'openvpn_1day.sh'],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        text=True,
+    process = await asyncio.create_subprocess_exec(
+        'bash', 'openvpn_1day.sh',
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
     )
-    process.stdout.readline()
-    process.stdin.write('1\n')
-    process.stdin.flush()
-    process.stdin.write(f'{temp_name}\n')
-    process.stdin.flush()
-    process.wait()
+    await process.stdout.readline()
+    process.stdin.write(b'1\n')
+    await process.stdin.drain()
+    process.stdin.write(f'{temp_name}\n'.encode('utf-8'))
+    await process.stdin.drain()
+    await process.wait()
     return temp_name
 
 
@@ -51,17 +50,14 @@ async def send_key(update, context):
             chat_id=chat.id,
             photo=photo,
         )
-    try:
-        temp_name = await create_key()
-        logger.info(f'Ключ создан для чата {chat.id} - {temp_name}.ovpn')
-        with open(Path().home() / f'{temp_name}.ovpn', 'rb') as document:
-            await context.bot.send_document(
-                chat_id=chat.id,
-                document=document,
-            )
-        os.remove(Path().home() / f'{temp_name}.ovpn')
-    except Exception as error:
-        logger.error(error, exc_info=True)
+    temp_name = await create_key()
+    logger.info(f'Ключ создан для чата {chat.id} - {temp_name}.ovpn')
+    with open(Path().home() / f'{temp_name}.ovpn', 'rb') as document:
+        await context.bot.send_document(
+            chat_id=chat.id,
+            document=document,
+        )
+    os.remove(Path().home() / f'{temp_name}.ovpn')
 
 
 async def start(update, context):
